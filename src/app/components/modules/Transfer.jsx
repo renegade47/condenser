@@ -1,14 +1,14 @@
 import React, { PropTypes, Component } from 'react';
 import ReactDOM from 'react-dom';
 import reactForm from 'app/utils/ReactForm';
-import {Map} from 'immutable';
+import { Map, Set } from 'immutable';
 import transaction from 'app/redux/Transaction';
 import user from 'app/redux/User';
 import LoadingIndicator from 'app/components/elements/LoadingIndicator';
 import runTests, {browserTests} from 'app/utils/BrowserTests'
 import {validate_account_name, validate_memo_field} from 'app/utils/ChainValidation';
 import {countDecimals} from 'app/utils/ParsersAndFormatters'
-import TextInput from 'react-autocomplete-input';
+import TextInput from 'react-autocomplete-input'; // TODO: use https://github.com/reactjs/react-autocomplete so we can pull in following usenames & style differently
 import tt from 'counterpart';
 import { APP_NAME, LIQUID_TOKEN, VESTING_TOKEN } from 'app/client_config';
 
@@ -20,6 +20,7 @@ class TransferForm extends Component {
         currentUser: PropTypes.object.isRequired,
         toVesting: PropTypes.bool.isRequired,
         currentAccount: PropTypes.object.isRequired,
+        following: PropTypes.object.isRequired,
     };
 
     constructor(props) {
@@ -136,18 +137,9 @@ class TransferForm extends Component {
         const isMemoPrivate = false;
 
         // Get names for the recent account transfers
-        var transferToLog = [];
-        currentAccount.get('transfer_history')
-            .map(item => {
-                const data = item.getIn([1, 'op', 1]);
-                const type = item.getIn([1, 'op', 0]);
-
-                // We only care about transfer
-                if (type === "transfer") {
-                    transferToLog.push(data.toJS().to);
-                }
-            }).filter(function(e,i,arr) {return arr.lastIndexOf(e) === i});
-
+        const transferToLog = currentAccount.get('transfer_history').reduce((acc, cur) => {
+            return (cur.getIn([1, 'op', 0]) === 'transfer') ? acc.add(cur.getIn([1, 'op', 1, 'to'])) : acc;
+        }, Set()).merge(this.props.following).toJS();
         const form = (
             <form onSubmit={handleSubmit(({data}) => {
                 this.setState({loading: true});
@@ -299,7 +291,15 @@ export default connect(
         if(initialValues.to !== currentUser.get('username'))
             transferToSelf = false // don't hide the to field
 
-        return {...ownProps, currentUser, currentAccount, toVesting, transferToSelf, initialValues}
+        return {
+            ...ownProps,
+            currentUser,
+            currentAccount,
+            toVesting,
+            transferToSelf,
+            following: state.global.getIn(['follow', 'getFollowingAsync', currentUser.get('username'), 'blog_result']),
+            initialValues,
+        }
     },
 
     // mapDispatchToProps
